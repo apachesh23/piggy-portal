@@ -131,7 +131,9 @@ export default function UserManagementPage() {
         const updatedUser = { ...user, [field]: value };
         
         if (field === 'role') {
-          if (value === 'junior' || value === 'moderator' || value === 'supervisor' || value === 'super_bg') {
+          if (value === 'tangiblee_partner') {
+            updatedUser.permission_level = 'tangiblee_partner';
+          } else if (value === 'junior' || value === 'moderator' || value === 'supervisor' || value === 'super_bg') {
             updatedUser.permission_level = 'moderator';
           } else if (value === 'teamleader') {
             updatedUser.permission_level = 'teamleader';
@@ -232,6 +234,7 @@ export default function UserManagementPage() {
   }, [users, originalUsers, showDisabled, filterRole, filterTeamleader, debouncedSearch]);
 
   const roleOptions = useMemo(() => [
+    { value: 'tangiblee_partner', label: 'Tangiblee Partner' },
     { value: 'junior', label: 'Junior' },
     { value: 'moderator', label: 'Moderator' },
     { value: 'supervisor', label: 'Supervisor' },

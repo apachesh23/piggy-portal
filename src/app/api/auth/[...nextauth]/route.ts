@@ -20,11 +20,10 @@ const authOptions: NextAuthOptions = {
     }),
   ],
   
-  // ✅ ДОБАВЬ ЭТОТ БЛОК:
   session: {
     strategy: 'jwt',
-    maxAge: 30 * 24 * 60 * 60, // 30 дней - сколько живет session
-    updateAge: 10 * 60,          // 5 минут - как часто обновляется
+    maxAge: 30 * 24 * 60 * 60, // 30 дней
+    updateAge: 10 * 60, // 10 минут
   },
 
   callbacks: {
@@ -32,7 +31,10 @@ const authOptions: NextAuthOptions = {
       if (account?.provider === 'discord') {
         try {
           const discordId = account.providerAccountId.toString();
-          const username = (profile as any)?.global_name || (profile as any)?.username || 'Unknown';
+          const discordDisplayName = (profile as any)?.global_name || (profile as any)?.username || 'Unknown';
+          const discordAvatar = (profile as any)?.avatar 
+            ? `https://cdn.discordapp.com/avatars/${discordId}/${(profile as any).avatar}.png` 
+            : null;
     
           // Проверяем существует ли пользователь
           const { data: existingUser } = await supabase
@@ -42,33 +44,37 @@ const authOptions: NextAuthOptions = {
             .single();
     
           if (existingUser) {
-            // ✅ НОВОЕ: Проверка is_active
+            // Проверка is_active
             if (!existingUser.is_active) {
               console.log(`❌ Login blocked: User ${existingUser.username} is disabled`);
-              return false; // Блокируем вход!
+              return false;
             }
     
             console.log('✅ User found:', existingUser.username);
             
-            // Обновляем username если изменился
-            if (existingUser.username !== username) {
-              await supabase
-                .from('users')
-                .update({ username })
-                .eq('discord_id', discordId);
-            }
+            // ✅ ИСПРАВЛЕНО: Обновляем только Discord-данные, НЕ трогаем username!
+            await supabase
+              .from('users')
+              .update({ 
+                discord_username: discordDisplayName,
+                discord_avatar: discordAvatar,
+                last_login_at: new Date().toISOString()
+              })
+              .eq('discord_id', discordId);
             
             return true;
           }
     
-          // Новый пользователь
-          console.log('🆕 Creating new user:', username);
+          // Новый пользователь - используем Discord имя как начальное username
+          console.log('🆕 Creating new user:', discordDisplayName);
           const { error } = await supabase.from('users').insert({
             discord_id: discordId,
-            username: username,
+            username: discordDisplayName,
+            discord_username: discordDisplayName,
+            discord_avatar: discordAvatar,
             role: 'junior',
-            permission_level: 'guest',
-            is_active: true, // ← Добавили для новых юзеров
+            permission_level: 'tangiblee_partner',
+            is_active: true,
           });
     
           if (error) throw error;
@@ -82,7 +88,7 @@ const authOptions: NextAuthOptions = {
     },
     
     async session({ session, token }: any) {
-      console.log('🔄 Session callback called!'); // Для проверки
+      console.log('🔄 Session callback called!');
     
       if (session.user) {
         try {
@@ -95,10 +101,10 @@ const authOptions: NextAuthOptions = {
           console.log('👤 User from DB:', userData?.username, 'is_active:', userData?.is_active);
     
           if (userData) {
-            // ✅ ДОБАВИЛИ ПРОВЕРКУ!
+            // Проверка is_active
             if (!userData.is_active) {
               console.log(`❌ Session blocked: User ${userData.username} is disabled`);
-              return null; // ← Убиваем сессию!
+              return null;
             }
     
             session.user = {
@@ -107,7 +113,7 @@ const authOptions: NextAuthOptions = {
               username: userData.username,
               name: userData.username,
               email: session.user.email || '',
-              image: session.user.image || '',
+              image: userData.discord_avatar || session.user.image || '',
               role: userData.role,
               permission_level: userData.permission_level,
               is_active: userData.is_active,
@@ -115,7 +121,7 @@ const authOptions: NextAuthOptions = {
           }
         } catch (error) {
           console.error('❌ Session error:', error);
-          return null; // ← При ошибке тоже убиваем
+          return null;
         }
       }
       return session;
@@ -128,14 +134,14 @@ const authOptions: NextAuthOptions = {
         try {
           const { data: userData } = await supabase
             .from('users')
-            .select('permission_level, role, is_active') // ← Добавили is_active
+            .select('permission_level, role, is_active')
             .eq('discord_id', account.providerAccountId.toString())
             .single();
           
           if (userData) {
             token.permission_level = userData.permission_level;
             token.role = userData.role;
-            token.is_active = userData.is_active; // ← Добавили
+            token.is_active = userData.is_active;
           }
         } catch (error) {
           console.error('❌ JWT error:', error);

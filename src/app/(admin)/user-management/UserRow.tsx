@@ -93,7 +93,7 @@ export const UserRow = memo(function UserRow({
       </Table.Td>
 
       <Table.Td w={200}>
-        {user.role === 'teamleader' || user.role === 'admin' ? (
+        {user.role === 'teamleader' || user.role === 'admin' || user.role === 'tangiblee_partner' ? (
           <TextInput
             value="—"
             disabled
