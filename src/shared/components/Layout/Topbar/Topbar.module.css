@@ -1,0 +1,58 @@
+/* UserProfile - на всю высоту, без скруглений */
+.userProfile {
+  display: flex;
+  align-items: center;
+  height: 60px;
+  min-width: 200px;  /* ← Минимум */
+  max-width: 350px;  /* ← Максимум */
+  padding: 0 16px;
+  /* border-left: 1px solid var(--mantine-color-gray-3); */
+  transition: background-color 0.2s;
+  cursor: pointer;
+}
+
+.userProfile:hover {
+  background-color: var(--mantine-color-gray-0);
+}
+
+/* NotificationButton - квадратная кнопка на всю высоту БЕЗ границ */
+.notificationButton {
+  height: 60px !important;
+  width: 60px !important;
+  border-radius: 0 !important;
+  /* border-left убрали! */
+}
+
+.notificationButton:hover {
+  background-color: var(--mantine-color-gray-0);
+}
+
+/* Link стили (для Navigation) */
+.link {
+  display: flex;
+  align-items: center;
+  height: 60px;
+  padding: 0 16px;
+  text-decoration: none;
+  color: var(--mantine-color-gray-7);
+  font-weight: 500;
+  font-size: 14px;
+  transition: background-color 0.2s;
+}
+
+.link:hover {
+  background-color: var(--mantine-color-gray-0);
+}
+
+/* SubLink стили (для выпадающих меню) */
+.subLink {
+  display: block;
+  padding: 8px 12px;
+  border-radius: 4px;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.subLink:hover {
+  background-color: var(--mantine-color-gray-0);
+}
