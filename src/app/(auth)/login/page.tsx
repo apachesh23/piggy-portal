@@ -2,11 +2,24 @@
 
 import { Button, Card, Stack, Title, Text } from '@mantine/core';
 import { IconBrandDiscord } from '@tabler/icons-react';
-import { signIn } from 'next-auth/react';
-import { useState } from 'react';
+import { signIn, useSession } from 'next-auth/react';
+import { useRouter } from 'next/navigation';
+import { useState, useEffect } from 'react';
 
 export default function LoginPage() {
   const [loading, setLoading] = useState(false);
+  const { data: session, status } = useSession();
+  const router = useRouter();
+
+  // ✅ Проверка сессии - если авторизован, редиректим на /statistics
+  useEffect(() => {
+    if (status === 'loading') return; // Ждем загрузки сессии
+    
+    if (session) {
+      console.log('✅ User already authenticated, redirecting to /statistics');
+      router.push('/statistics');
+    }
+  }, [session, status, router]);
 
   const handleLogin = async () => {
     setLoading(true);
@@ -17,6 +30,23 @@ export default function LoginPage() {
       setLoading(false);
     }
   };
+
+  // Показываем загрузку пока проверяем сессию
+  if (status === 'loading') {
+    return (
+      <Card shadow="md" padding="xl" radius="md" withBorder style={{ width: '400px' }}>
+        <Stack align="center" gap="lg">
+          <Title order={1}>🐷 Piggy Portal</Title>
+          <Text c="dimmed">Checking authentication...</Text>
+        </Stack>
+      </Card>
+    );
+  }
+
+  // Если уже авторизован, не показываем форму (редирект произойдет в useEffect)
+  if (session) {
+    return null;
+  }
 
   return (
     <Card shadow="md" padding="xl" radius="md" withBorder style={{ width: '400px' }}>

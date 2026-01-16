@@ -1,6 +1,10 @@
 import { Handle, Position } from 'reactflow';
 import { memo } from 'react';
-import { getRoleColor, getRoleLabel, type UserRole } from '@/lib/constants/roles';
+import { getAvatarColor, getRoleColor, getRoleLabel, getInitials, type UserRole } from '@/lib/constants/roles';
+
+// ============================================================================
+// ТИПЫ
+// ============================================================================
 
 type TeamCardNodeData = {
   id: number;
@@ -12,9 +16,13 @@ type TeamCardNodeData = {
   onClick?: (userId: number) => void;
 };
 
-function getInitials(name: string): string {
-  return name.charAt(0).toUpperCase();
-}
+type LabelNodeData = {
+  label: string;
+};
+
+// ============================================================================
+// TEAM CARD NODE - Карточка пользователя
+// ============================================================================
 
 export const TeamCardNode = memo(function TeamCardNode({ data }: { data: TeamCardNodeData }) {
   return (
@@ -59,10 +67,10 @@ export const TeamCardNode = memo(function TeamCardNode({ data }: { data: TeamCar
         {/* Avatar */}
         <div
           style={{
-            width: '32px',
-            height: '32px',
+            width: '36px',
+            height: '36px',
             borderRadius: '6px',
-            backgroundColor: data.avatar ? '#e9ecef' : getRoleColor(data.role),
+            backgroundColor: data.avatar ? '#e9ecef' : getAvatarColor(data.role),
             flexShrink: 0,
             display: 'flex',
             alignItems: 'center',
@@ -129,5 +137,56 @@ export const TeamCardNode = memo(function TeamCardNode({ data }: { data: TeamCar
         }}
       />
     </div>
+  );
+});
+
+// ============================================================================
+// LABEL NODE - Метка (ADMINISTRATION, TEAMS)
+// ============================================================================
+
+export const LabelNode = memo(function LabelNode({ data }: { data: LabelNodeData }) {
+  return (
+    <>
+      <Handle
+        type="target"
+        position={Position.Top}
+        style={{ 
+          background: 'transparent',
+          border: 'none',
+          width: 1,
+          height: 1,
+        }}
+      />
+      
+      <div style={{ 
+        padding: '12px 24px',
+        backgroundColor: 'rgba(255, 255, 255, 0.9)',
+        borderRadius: '8px',
+        border: '1px solid #ced4da',
+      }}>
+        <div
+          style={{
+            fontSize: '16px',
+            fontWeight: 700,
+            color: '#868e96',
+            textTransform: 'uppercase',
+            letterSpacing: '1px',
+          }}
+        >
+          {data.label}
+        </div>
+      </div>
+      
+      <Handle
+        type="source"
+        position={Position.Bottom}
+        style={{ 
+          background: 'transparent',
+          border: 'none',
+          width: 1,
+          height: 1,
+        }}
+      />
+    </>
   );
 });

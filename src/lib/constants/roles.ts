@@ -19,7 +19,7 @@ export const PERMISSIONS = {
   DEV: 'dev' as PermissionLevel,
 };
 
-// 🎨 ЦВЕТА ДЛЯ РОЛЕЙ (hex)
+// 🎨 ЦВЕТА ДЛЯ РОЛЕЙ (hex) - яркие для UI элементов
 export const ROLE_COLORS = {
   admin: '#2ECC71',            // Зеленый
   teamleader: '#E74C3C',       // Красный
@@ -28,6 +28,17 @@ export const ROLE_COLORS = {
   moderator: '#3498DB',        // Синий
   junior: '#9B59B6',           // Фиолетовый
   tangiblee_partner: '#26A69A', // Морская волна (teal)
+} as const;
+
+// 🎨 ПРИГЛУШЁННЫЕ ЦВЕТА ДЛЯ АВАТАРОВ - менее насыщенные версии
+export const AVATAR_COLORS = {
+  admin: '#5FAD6F',            // Приглушённый зелёный
+  teamleader: '#C97B74',       // Приглушённый красный
+  supervisor: '#D4B857',       // Приглушённый жёлтый
+  super_bg: '#7A8F9C',         // Приглушённый серо-синий
+  moderator: '#6BA5C8',        // Приглушённый синий
+  junior: '#A87BB8',           // Приглушённый фиолетовый
+  tangiblee_partner: '#5FA69F', // Приглушённый teal
 } as const;
 
 // 🎨 Mantine цвета (для компонентов Badge, Text и т.д.)
@@ -41,14 +52,25 @@ export const ROLE_MANTINE_COLORS = {
   tangiblee_partner: 'cyan',
 } as const;
 
-// Функция для получения HEX цвета роли
+// Функция для получения HEX цвета роли (яркий для UI)
 export function getRoleColor(role: UserRole): string {
   return ROLE_COLORS[role] || ROLE_COLORS.tangiblee_partner;
+}
+
+// Функция для получения приглушённого цвета для аватара
+export function getAvatarColor(role: UserRole): string {
+  return AVATAR_COLORS[role] || AVATAR_COLORS.tangiblee_partner;
 }
 
 // Функция для получения Mantine цвета
 export function getRoleMantineColor(role: UserRole): string {
   return ROLE_MANTINE_COLORS[role] || 'gray';
+}
+
+// Получить инициалы из имени (первая буква заглавная)
+export function getInitials(name: string): string {
+  if (!name) return '?';
+  return name.charAt(0).toUpperCase();
 }
 
 // Проверка прав доступа (иерархия)

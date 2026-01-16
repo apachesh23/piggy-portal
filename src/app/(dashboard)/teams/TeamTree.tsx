@@ -1,17 +1,24 @@
 'use client';
 
-import { useMemo, useState, useCallback, useRef } from 'react';
+import { useMemo, useState, useRef, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
 import ReactFlow, {
   Background,
   Controls,
   Node,
   Edge,
   ReactFlowProvider,
-  useOnViewportChange,
+  NodeTypes,
+  useReactFlow,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
 import type { UserRole } from '@/lib/constants/roles';
 import { getRoleColor, getRoleLabel } from '@/lib/constants/roles';
+import { TeamCardNode, LabelNode } from './TeamNodes';
+
+// ============================================================================
+// ТИПЫ
+// ============================================================================
 
 type User = {
   id: number;
@@ -24,7 +31,13 @@ type User = {
 
 type TeamTreeProps = {
   users: User[];
+  focusUserId?: number | null;
+  onFocusComplete?: () => void;
 };
+
+// ============================================================================
+// УТИЛИТЫ
+// ============================================================================
 
 const ROLE_ORDER: Record<UserRole, number> = {
   supervisor: 1,
@@ -33,6 +46,7 @@ const ROLE_ORDER: Record<UserRole, number> = {
   junior: 4,
   teamleader: 5,
   admin: 6,
+  tangiblee_partner: 7,
 };
 
 function sortUsersByRole(users: User[]): User[] {
@@ -79,12 +93,53 @@ function findPathToTop(
   return pathEdges;
 }
 
-function TeamTreeContent({ users }: TeamTreeProps) {
+// ============================================================================
+// NODE TYPES - Регистрация кастомных нод
+// ============================================================================
+
+const nodeTypes: NodeTypes = {
+  teamCard: TeamCardNode,
+  label: LabelNode,
+};
+
+// ============================================================================
+// TEAM TREE CONTENT - Основной компонент
+// ============================================================================
+
+function TeamTreeContent({ users, focusUserId, onFocusComplete }: TeamTreeProps) {
+  const router = useRouter();
+  const reactFlowInstance = useReactFlow();
   const [hoveredUserId, setHoveredUserId] = useState<number | null>(null);
   
   const maxWidth = useMemo(() => calculateMaxWidth(users), [users]);
   const edgesRef = useRef<Edge[]>([]);
 
+  // Обработчик клика - переход на профиль
+  const handleUserClick = (userId: number) => {
+    router.push(`/profile/${userId}`);
+  };
+
+  // Зум на найденного пользователя
+  useEffect(() => {
+    if (focusUserId && reactFlowInstance) {
+      const node = reactFlowInstance.getNode(`user-${focusUserId}`);
+      if (node) {
+        reactFlowInstance.fitView({
+          nodes: [node],
+          duration: 800,
+          padding: 0.5,
+          maxZoom: 1.5,
+        });
+        
+        // Вызываем callback после завершения анимации
+        setTimeout(() => {
+          onFocusComplete?.();
+        }, 900);
+      }
+    }
+  }, [focusUserId, reactFlowInstance, onFocusComplete]);
+
+  // Создание нод
   const nodes = useMemo(() => {
     const nodes: Node[] = [];
     const ceoId = 7;
@@ -98,23 +153,13 @@ function TeamTreeContent({ users }: TeamTreeProps) {
     const totalTLWidth = teamleaders.length > 0 ? (teamleaders.length - 1) * tlSpacing : 0;
     const centerX = totalTLWidth / 2;
 
-    // Labels как дефолтные ноды
+    // ADMINISTRATION LABEL
     nodes.push({
       id: 'label-administration',
-      type: 'default',
+      type: 'label',
       data: { label: 'ADMINISTRATION' },
-      position: { x: centerX - 100, y: -100 },
+      position: { x: centerX - 102, y: -100 },
       draggable: false,
-      style: {
-        background: 'rgba(255, 255, 255, 0.9)',
-        border: '2px solid #ced4da',
-        borderRadius: '8px',
-        width: '200px',
-        padding: '12px 24px',
-        fontSize: '14px',
-        fontWeight: 700,
-        color: '#868e96',
-      },
     });
 
     // CEO
@@ -122,43 +167,22 @@ function TeamTreeContent({ users }: TeamTreeProps) {
     if (ceo) {
       nodes.push({
         id: `user-${ceo.id}`,
-        type: 'default',
-        data: { 
-          label: (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                background: getRoleColor(ceo.role),
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 600,
-              }}>
-                {ceo.username.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{ceo.username}</div>
-                <div style={{ fontSize: 12, color: getRoleColor(ceo.role) }}>{getRoleLabel(ceo.role)}</div>
-              </div>
-            </div>
-          )
+        type: 'teamCard',
+        data: {
+          id: ceo.id,
+          username: ceo.username,
+          avatar: ceo.discord_avatar,
+          role: ceo.role,
+          maxWidth,
+          onHover: setHoveredUserId,
+          onClick: handleUserClick,
         },
         position: { x: centerX - maxWidth / 2, y: 0 },
         draggable: false,
-        style: {
-          width: maxWidth,
-          background: 'white',
-          border: '1px solid #dee2e6',
-          borderRadius: 6,
-          padding: '8px 12px',
-        },
       });
     }
 
-    // Admins
+    // ADMINS
     const adminSpacing = maxWidth + 20;
     const totalAdminWidth = admins.length > 0 ? (admins.length - 1) * adminSpacing : 0;
     const adminStartX = centerX - totalAdminWidth / 2 - maxWidth / 2;
@@ -166,101 +190,52 @@ function TeamTreeContent({ users }: TeamTreeProps) {
     admins.forEach((admin, index) => {
       nodes.push({
         id: `user-${admin.id}`,
-        type: 'default',
-        data: { 
-          label: (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                background: getRoleColor(admin.role),
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 600,
-              }}>
-                {admin.username.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{admin.username}</div>
-                <div style={{ fontSize: 12, color: getRoleColor(admin.role) }}>{getRoleLabel(admin.role)}</div>
-              </div>
-            </div>
-          )
+        type: 'teamCard',
+        data: {
+          id: admin.id,
+          username: admin.username,
+          avatar: admin.discord_avatar,
+          role: admin.role,
+          maxWidth,
+          onHover: setHoveredUserId,
+          onClick: handleUserClick,
         },
         position: { x: adminStartX + index * adminSpacing, y: 120 },
         draggable: false,
-        style: {
-          width: maxWidth,
-          background: 'white',
-          border: '1px solid #dee2e6',
-          borderRadius: 6,
-          padding: '8px 12px',
-        },
       });
     });
 
-    // Teams label
+    // TEAMS LABEL
     nodes.push({
       id: 'label-teams',
-      type: 'default',
+      type: 'label',
       data: { label: 'TEAMS' },
-      position: { x: centerX - 75, y: 240 },
+      position: { x: centerX - 60, y: 240 },
       draggable: false,
-      style: {
-        background: 'rgba(255, 255, 255, 0.9)',
-        border: '2px solid #ced4da',
-        borderRadius: '8px',
-        padding: '12px 24px',
-        fontSize: '14px',
-        fontWeight: 700,
-        color: '#868e96',
-      },
     });
 
-    // TeamLeaders + Members
+    // TEAMLEADERS + MEMBERS
     teamleaders.forEach((tl, tlIndex) => {
       const tlX = tlIndex * tlSpacing;
       
+      // TeamLeader
       nodes.push({
         id: `user-${tl.id}`,
-        type: 'default',
-        data: { 
-          label: (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <div style={{
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                background: getRoleColor(tl.role),
-                color: 'white',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                fontWeight: 600,
-              }}>
-                {tl.username.charAt(0).toUpperCase()}
-              </div>
-              <div>
-                <div style={{ fontWeight: 500, fontSize: 14 }}>{tl.username}</div>
-                <div style={{ fontSize: 12, color: getRoleColor(tl.role) }}>{getRoleLabel(tl.role)}</div>
-              </div>
-            </div>
-          )
+        type: 'teamCard',
+        data: {
+          id: tl.id,
+          username: tl.username,
+          avatar: tl.discord_avatar,
+          role: tl.role,
+          maxWidth,
+          onHover: setHoveredUserId,
+          onClick: handleUserClick,
         },
         position: { x: tlX, y: 360 },
         draggable: false,
-        style: {
-          width: maxWidth,
-          background: 'white',
-          border: '1px solid #dee2e6',
-          borderRadius: 6,
-          padding: '8px 12px',
-        },
       });
 
+      // Team Members
       const teamMembers = users.filter(
         (u) =>
           u.teamleader_id === tl.id &&
@@ -274,39 +249,18 @@ function TeamTreeContent({ users }: TeamTreeProps) {
       sortedMembers.forEach((member, memberIndex) => {
         nodes.push({
           id: `user-${member.id}`,
-          type: 'default',
-          data: { 
-            label: (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <div style={{
-                  width: 32,
-                  height: 32,
-                  borderRadius: 6,
-                  background: getRoleColor(member.role),
-                  color: 'white',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  fontWeight: 600,
-                }}>
-                  {member.username.charAt(0).toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ fontWeight: 500, fontSize: 14 }}>{member.username}</div>
-                  <div style={{ fontSize: 12, color: getRoleColor(member.role) }}>{getRoleLabel(member.role)}</div>
-                </div>
-              </div>
-            )
+          type: 'teamCard',
+          data: {
+            id: member.id,
+            username: member.username,
+            avatar: member.discord_avatar,
+            role: member.role,
+            maxWidth,
+            onHover: setHoveredUserId,
+            onClick: handleUserClick,
           },
           position: { x: tlX, y: 450 + memberIndex * 60 },
           draggable: false,
-          style: {
-            width: maxWidth,
-            background: 'white',
-            border: '1px solid #dee2e6',
-            borderRadius: 6,
-            padding: '8px 12px',
-          },
         });
       });
     });
@@ -314,6 +268,7 @@ function TeamTreeContent({ users }: TeamTreeProps) {
     return nodes;
   }, [users, maxWidth]);
 
+  // Создание edges (связей)
   const baseEdges = useMemo(() => {
     const edges: Edge[] = [];
     const ceoId = 7;
@@ -325,6 +280,7 @@ function TeamTreeContent({ users }: TeamTreeProps) {
     
     const ceo = users.find((u) => u.id === ceoId);
 
+    // Admin label -> CEO
     if (ceo) {
       edges.push({
         id: 'admin-label-ceo',
@@ -336,6 +292,7 @@ function TeamTreeContent({ users }: TeamTreeProps) {
       });
     }
 
+    // CEO -> Admins
     admins.forEach((admin) => {
       if (ceo) {
         edges.push({
@@ -349,6 +306,7 @@ function TeamTreeContent({ users }: TeamTreeProps) {
       }
     });
 
+    // Admins -> Teams label
     admins.forEach((admin) => {
       edges.push({
         id: `admin-teams-${admin.id}`,
@@ -360,6 +318,7 @@ function TeamTreeContent({ users }: TeamTreeProps) {
       });
     });
 
+    // Teams label -> TeamLeaders
     teamleaders.forEach((tl) => {
       edges.push({
         id: `teams-tl-${tl.id}`,
@@ -367,9 +326,10 @@ function TeamTreeContent({ users }: TeamTreeProps) {
         target: `user-${tl.id}`,
         type: 'smoothstep',
         animated: true,
-        style: { stroke: '#ddd', strokeWidth: 2 },
+        style: { stroke: '#ddd', strokeWidth: 2},
       });
 
+      // TeamLeaders -> Members
       const teamMembers = users.filter(
         (u) =>
           u.teamleader_id === tl.id &&
@@ -396,6 +356,7 @@ function TeamTreeContent({ users }: TeamTreeProps) {
     return edges;
   }, [users]);
 
+  // Подсветка путей при hover
   const edges = useMemo(() => {
     if (!hoveredUserId) return baseEdges;
 
@@ -414,10 +375,18 @@ function TeamTreeContent({ users }: TeamTreeProps) {
   }, [hoveredUserId, baseEdges, users]);
 
   return (
-    <div style={{ width: '100%', height: '100%' }}>
+    <div style={{ 
+      width: '100%', 
+      height: '100%',
+      border: '1px solid #dee2e6',
+      borderRadius: '8px',
+      overflow: 'hidden',
+      backgroundColor: '#fff',
+    }}>
       <ReactFlow
         nodes={nodes}
         edges={edges}
+        nodeTypes={nodeTypes}
         nodesDraggable={false}
         nodesConnectable={false}
         elementsSelectable={true}
@@ -442,10 +411,14 @@ function TeamTreeContent({ users }: TeamTreeProps) {
   );
 }
 
-export function TeamTree({ users }: TeamTreeProps) {
+// ============================================================================
+// ЭКСПОРТ
+// ============================================================================
+
+export function TeamTree({ users, focusUserId, onFocusComplete }: TeamTreeProps) {
   return (
     <ReactFlowProvider>
-      <TeamTreeContent users={users} />
+      <TeamTreeContent users={users} focusUserId={focusUserId} onFocusComplete={onFocusComplete} />
     </ReactFlowProvider>
   );
 }
