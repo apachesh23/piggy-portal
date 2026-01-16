@@ -5,13 +5,20 @@ import { IconSettings, IconLogout, IconChevronRight } from '@tabler/icons-react'
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { getRoleColor, getRoleLabel } from '@/lib/constants/roles';
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import classes from './Topbar.module.css';
 
 export function UserProfile() {
   const { user, logout } = useAuth();
+  const router = useRouter();
   const [opened, setOpened] = useState(false);
 
   if (!user) return null;
+
+  const handleSettingsClick = () => {
+    setOpened(false);
+    router.push('/settings');
+  };
 
   return (
     <Menu 
@@ -83,7 +90,7 @@ export function UserProfile() {
           <Menu.Item
             className={classes.accountMenuItem}
             leftSection={<IconSettings size={16} stroke={1.5} />}
-            onClick={() => console.log('Settings clicked')}
+            onClick={handleSettingsClick}
           >
             Settings
           </Menu.Item>
