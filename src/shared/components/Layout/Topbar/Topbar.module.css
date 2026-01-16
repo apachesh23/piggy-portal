@@ -3,16 +3,16 @@
   display: flex;
   align-items: center;
   height: 60px;
-  min-width: 200px;  /* ← Минимум */
-  max-width: 350px;  /* ← Максимум */
+  min-width: 200px;
+  max-width: 350px;
   padding: 0 16px;
-  /* border-left: 1px solid var(--mantine-color-gray-3); */
-  transition: background-color 0.2s;
+  transition: all 0.2s;
   cursor: pointer;
+  border-left: 1px solid rgba(217, 29, 84, 0.1);
 }
 
 .userProfile:hover {
-  background-color: var(--mantine-color-gray-0);
+  background-color: rgba(217, 29, 84, 0.05);
 }
 
 /* NotificationButton - квадратная кнопка на всю высоту БЕЗ границ */
@@ -20,11 +20,11 @@
   height: 60px !important;
   width: 60px !important;
   border-radius: 0 !important;
-  /* border-left убрали! */
+  border-left: 1px solid rgba(217, 29, 84, 0.1);
 }
 
 .notificationButton:hover {
-  background-color: var(--mantine-color-gray-0);
+  background-color: rgba(217, 29, 84, 0.05);
 }
 
 /* Link стили (для Navigation) */
@@ -34,14 +34,19 @@
   height: 60px;
   padding: 0 16px;
   text-decoration: none;
-  color: var(--mantine-color-gray-7);
+  color: var(--color-foreground);
   font-weight: 500;
   font-size: 14px;
-  transition: background-color 0.2s;
+  transition: color 0.2s;
 }
 
 .link:hover {
-  background-color: var(--mantine-color-gray-0);
+  color: var(--color-accent);
+}
+
+/* Активная страница */
+.link.active {
+  color: var(--color-accent);
 }
 
 /* SubLink стили (для выпадающих меню) */
@@ -55,4 +60,18 @@
 
 .subLink:hover {
   background-color: var(--mantine-color-gray-0);
+}
+
+/* Account Menu стили */
+.accountMenuItem {
+  color: var(--color-foreground) !important;
+}
+
+.accountMenuItem:hover {
+  background-color: rgba(217, 29, 84, 0.05) !important;
+  color: var(--color-accent) !important;
+}
+
+.accountMenuHeader {
+  color: var(--color-foreground-muted);
 }

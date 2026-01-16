@@ -132,7 +132,7 @@ export default function TeamsPage() {
       <Group justify="space-between" mb="md" wrap="nowrap">
         <div>
           <Title order={1}>Team Structure</Title>
-          <Text c="dimmed" size="sm" mt={4}>
+          <Text c="var(--color-foreground-muted)" size="sm" mt={4}>
             View the organizational hierarchy and team composition
           </Text>
         </div>

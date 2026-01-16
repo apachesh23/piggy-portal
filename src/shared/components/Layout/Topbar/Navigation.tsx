@@ -9,7 +9,6 @@ import {
   Divider,
   Center,
   Box,
-  useMantineTheme,
 } from '@mantine/core';
 import {
   IconChevronDown,
@@ -20,7 +19,7 @@ import {
   IconSettings,
 } from '@tabler/icons-react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation'; // ← Добавь этот импорт
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/features/auth/hooks/useAuth';
 import { hasPermission, PERMISSIONS } from '@/lib/constants/roles';
 import classes from './Topbar.module.css';
@@ -63,25 +62,36 @@ const adminLinks = [
 
 export function Navigation() {
   const { user } = useAuth();
-  const theme = useMantineTheme();
-  const pathname = usePathname(); // ← Получаем текущий путь
+  const pathname = usePathname();
 
-  // Проверка типа для TypeScript
   if (!user) {
     return (
       <Group gap={0} h="100%" align="stretch">
-        <Link href="/statistics" className={classes.link}>
+        <Link 
+          href="/statistics" 
+          className={`${classes.link} ${pathname === '/statistics' ? classes.active : ''}`}
+        >
           Statistics
         </Link>
-        <Link href="/leaderboard" className={classes.link}>
+        <Link 
+          href="/leaderboard" 
+          className={`${classes.link} ${pathname === '/leaderboard' ? classes.active : ''}`}
+        >
           Leaderboard
         </Link>
-        <Link href="/teams" className={classes.link}>
+        <Link 
+          href="/teams" 
+          className={`${classes.link} ${pathname === '/teams' ? classes.active : ''}`}
+        >
           Teams
         </Link>
       </Group>
     );
   }
+
+  // Проверяем активность выпадающих меню
+  const isTeamleaderActive = teamleaderLinks.some(link => pathname.startsWith(link.href));
+  const isAdminActive = adminLinks.some(link => pathname.startsWith(link.href));
 
   const renderSubLinks = (links: typeof teamleaderLinks) => {
     return (
@@ -90,14 +100,14 @@ export function Navigation() {
           <Link href={item.href} key={item.title} style={{ textDecoration: 'none' }}>
             <UnstyledButton className={classes.subLink}>
               <Group wrap="nowrap" align="flex-start" gap="sm">
-                <ThemeIcon size={34} variant="default" radius="md">
-                  <item.icon size={22} color={theme.colors.blue[6]} />
+                <ThemeIcon size={34} variant="light" radius="md" color="var(--color-accent)">
+                  <item.icon size={22} />
                 </ThemeIcon>
                 <div>
-                  <Text size="sm" fw={500}>
+                  <Text size="sm" fw={500} c="var(--color-foreground)">
                     {item.title}
                   </Text>
-                  <Text size="xs" c="dimmed">
+                  <Text size="xs" c="var(--color-foreground-muted)">
                     {item.description}
                   </Text>
                 </div>
@@ -111,33 +121,40 @@ export function Navigation() {
 
   return (
     <Group gap={0} h="100%" align="stretch">
-      {/* Доступно всем авторизованным */}
-      <Link href="/statistics" className={classes.link}>
+      <Link 
+        href="/statistics" 
+        className={`${classes.link} ${pathname === '/statistics' ? classes.active : ''}`}
+      >
         Statistics
       </Link>
-      <Link href="/leaderboard" className={classes.link}>
+      <Link 
+        href="/leaderboard" 
+        className={`${classes.link} ${pathname === '/leaderboard' ? classes.active : ''}`}
+      >
         Leaderboard
       </Link>
-      <Link href="/teams" className={classes.link}>
+      <Link 
+        href="/teams" 
+        className={`${classes.link} ${pathname === '/teams' ? classes.active : ''}`}
+      >
         Teams
       </Link>
 
-    {/* Только для Teamleader и выше */}
-    {hasPermission(user.permission_level, PERMISSIONS.TEAMLEADER) && (
+      {hasPermission(user.permission_level, PERMISSIONS.TEAMLEADER) && (
         <HoverCard width="auto" position="bottom" radius="md" shadow="md" withinPortal>
           <HoverCard.Target>
-            <a href="#" className={classes.link}>
+            <a href="#" className={`${classes.link} ${isTeamleaderActive ? classes.active : ''}`}>
               <Center inline>
                 <Box component="span" mr={5}>
                   Teamleader
                 </Box>
-                <IconChevronDown size={16} color={theme.colors.blue[6]} />
+                <IconChevronDown size={16} />
               </Center>
             </a>
           </HoverCard.Target>
 
           <HoverCard.Dropdown style={{ padding: '16px' }}>
-            <Text fw={500} mb="sm">
+            <Text fw={500} mb="sm" c="var(--color-foreground)">
               Teamleader Tools
             </Text>
             <Divider mb="md" />
@@ -146,22 +163,21 @@ export function Navigation() {
         </HoverCard>
       )}
 
-      {/* Только для Admin и Dev */}
       {hasPermission(user.permission_level, PERMISSIONS.ADMIN) && (
         <HoverCard width="auto" position="bottom" radius="md" shadow="md" withinPortal>
           <HoverCard.Target>
-            <a href="#" className={classes.link}>
+            <a href="#" className={`${classes.link} ${isAdminActive ? classes.active : ''}`}>
               <Center inline>
                 <Box component="span" mr={5}>
                   Admin
                 </Box>
-                <IconChevronDown size={16} color={theme.colors.blue[6]} />
+                <IconChevronDown size={16} />
               </Center>
             </a>
           </HoverCard.Target>
 
           <HoverCard.Dropdown style={{ padding: '16px' }}>
-            <Text fw={500} mb="sm">
+            <Text fw={500} mb="sm" c="var(--color-foreground)">
               Admin Panel
             </Text>
             <Divider mb="md" />

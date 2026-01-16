@@ -260,7 +260,7 @@ export default function UserManagementPage() {
       <Group justify="space-between">
         <div>
           <Title order={1}>User Management</Title>
-          <Text c="dimmed" size="sm" mt={4}>
+          <Text c="var(--color-foreground-muted)" size="sm" mt={4}>
             Manage team members, their roles, and permissions
           </Text>
         </div>

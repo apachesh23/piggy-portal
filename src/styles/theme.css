@@ -1,0 +1,24 @@
+/*
+  ЦВЕТОВАЯ ПАЛИТРА ПРОЕКТА
+  
+  Использование в CSS:
+    color: var(--color-foreground);
+    background: var(--color-background);
+  
+  Использование в TSX (inline стили):
+  <div style={{ color: 'var(--color-foreground-muted)' }}>Text</div>
+  
+  Использование в Mantine компонентах:
+  <Text c="var(--color-foreground-muted)">Secondary text</Text>
+  <Box bg="var(--color-background)">Content</Box>
+*/
+
+
+:root {
+    --color-background: #fff5f7;
+    --color-foreground: #6b2737;
+    --color-foreground-muted: #c596a4;
+    --color-dot: rgba(190, 100, 130, 0.15);
+    --color-accent: #d91d54;
+    --color-accent-hover: #b81648;
+  }

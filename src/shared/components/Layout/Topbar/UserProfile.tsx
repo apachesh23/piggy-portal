@@ -70,32 +70,33 @@ export function UserProfile() {
       </Menu.Target>
 
       <Menu.Dropdown>
-        {/* Account header */}
-        <Box px="sm" py="xs">
-          <Text size="xs" c="dimmed" fw={500}>
-            Account
-          </Text>
-        </Box>
-        
-        <Divider />
+          {/* Account header */}
+          <Box px="sm" py="xs">
+            <Text size="xs" fw={500} className={classes.accountMenuHeader}>
+              Account
+            </Text>
+          </Box>
+          
+          <Divider />
 
-        {/* Settings */}
-        <Menu.Item
-          leftSection={<IconSettings size={16} stroke={1.5} />}
-          onClick={() => console.log('Settings clicked')}
-        >
-          Settings
-        </Menu.Item>
+          {/* Settings */}
+          <Menu.Item
+            className={classes.accountMenuItem}
+            leftSection={<IconSettings size={16} stroke={1.5} />}
+            onClick={() => console.log('Settings clicked')}
+          >
+            Settings
+          </Menu.Item>
 
-        {/* Logout */}
-        <Menu.Item
-          leftSection={<IconLogout size={16} stroke={1.5} />}
-          onClick={logout}
-          color="red"
-        >
-          Logout
-        </Menu.Item>
-      </Menu.Dropdown>
+          {/* Logout */}
+          <Menu.Item
+            className={classes.accountMenuItem}
+            leftSection={<IconLogout size={16} stroke={1.5} />}
+            onClick={logout}
+          >
+            Logout
+          </Menu.Item>
+        </Menu.Dropdown>
     </Menu>
   );
 }

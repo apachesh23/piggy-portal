@@ -96,7 +96,7 @@ export const TeamCardNode = memo(function TeamCardNode({ data }: { data: TeamCar
               overflow: 'hidden',
               textOverflow: 'ellipsis',
               whiteSpace: 'nowrap',
-              color: '#212529',
+              color: 'var(--color-foreground)'
             }}
           >
             {data.username}
@@ -168,9 +168,10 @@ export const LabelNode = memo(function LabelNode({ data }: { data: LabelNodeData
           style={{
             fontSize: '16px',
             fontWeight: 700,
-            color: '#868e96',
+            color: 'var(--color-foreground-muted)',
             textTransform: 'uppercase',
             letterSpacing: '1px',
+            
           }}
         >
           {data.label}
