@@ -5,6 +5,7 @@ import { Container } from '@mantine/core';
 import { useSession } from 'next-auth/react';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
+import { DatesProvider } from '@mantine/dates';
 
 export default function AdminLayout({
   children,
@@ -25,6 +26,7 @@ export default function AdminLayout({
   if (!session) return null;
 
   return (
+    
     <div style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
       <Topbar />
       <main style={{ flex: 1, overflow: 'hidden', padding: '20px 20px 40px 20px' }}>
