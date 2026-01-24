@@ -13,7 +13,6 @@ import {
   Stack,
   Table,
   Text,
-  TextInput,
   Title,
 } from '@mantine/core';
 import { DateTimePicker } from '@mantine/dates';
@@ -26,21 +25,17 @@ import {
   IconPlayerTrackNext,
 } from '@tabler/icons-react';
 import { useState } from 'react';
-import { RunDetailsDrawer } from './RunDetailsDrawer'; // путь поправь под себя
 
-type IngestionMode = 'raw' | 'corrections' | 'defects';
+// Импорты типов из правильных мест
+import type { IngestionMode, ModeStats, RecentActivityItem } from '../types';
+import { RunDetailsDrawer } from './RunDetailsDrawer';
 
-type ModeStats = {
-  lastRun: string | null;
-  lastTrigger: 'cron' | 'manual' | null;
-  lastDuration: number | null;
-  lastRows: number | null;
-  lastError: string | null;
-  status: 'running' | 'success' | 'error' | 'idle';
-  cronStatus: 'running' | 'paused';
-  cronSchedule: string;
+// Локальный тип Props для компонента
+type Props = {
+  onDetailsClick: () => void;
 };
 
+// Mock данные
 const MOCK_STATS: Record<IngestionMode, ModeStats> = {
   raw: {
     lastRun: '2026-01-20 14:00:00',
@@ -51,6 +46,7 @@ const MOCK_STATS: Record<IngestionMode, ModeStats> = {
     status: 'success',
     cronStatus: 'running',
     cronSchedule: '0 */1 * * *',
+    nextRun: '2026-01-20 15:00:00',
   },
   corrections: {
     lastRun: '2026-01-20 13:00:00',
@@ -61,6 +57,7 @@ const MOCK_STATS: Record<IngestionMode, ModeStats> = {
     status: 'success',
     cronStatus: 'paused',
     cronSchedule: '0 */2 * * *',
+    nextRun: null,
   },
   defects: {
     lastRun: null,
@@ -71,17 +68,17 @@ const MOCK_STATS: Record<IngestionMode, ModeStats> = {
     status: 'idle',
     cronStatus: 'paused',
     cronSchedule: '0 */3 * * *',
+    nextRun: null,
   },
 };
 
-const MOCK_RECENT = [
+const MOCK_RECENT: RecentActivityItem[] = [
   { id: '1', time: '2026-01-20 14:00:00', mode: 'raw', trigger: 'cron' },
   { id: '2', time: '2026-01-20 13:00:00', mode: 'corrections', trigger: 'manual' },
   { id: '3', time: '2026-01-20 12:00:00', mode: 'raw', trigger: 'cron' },
   { id: '4', time: '2026-01-20 11:00:00', mode: 'raw', trigger: 'cron' },
   { id: '5', time: '2026-01-20 10:00:00', mode: 'corrections', trigger: 'cron' },
   { id: '6', time: '2026-01-20 09:00:00', mode: 'raw', trigger: 'cron' },
-  
 ];
 
 function statusBadge(status: ModeStats['status']) {
@@ -123,10 +120,6 @@ function fmtDuration(ms: number | null) {
   return `${m}m ${r}s`;
 }
 
-type Props = {
-  onDetailsClick: () => void;
-};
-
 export function DataIngestionCard({ onDetailsClick }: Props) {
   const [mode, setMode] = useState<IngestionMode>('raw');
   const [manualFrom, setManualFrom] = useState<string | null>(null);
@@ -134,7 +127,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
   const [loading, setLoading] = useState(false);
   const [cronLoading, setCronLoading] = useState(false);
   const [detailsOpened, setDetailsOpened] = useState(false);
-  
+
   // Track cron status per mode (mutable state for UI demo)
   const [cronStatuses, setCronStatuses] = useState<Record<IngestionMode, 'running' | 'paused'>>({
     raw: MOCK_STATS.raw.cronStatus,
@@ -175,7 +168,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
 
   return (
     <>
-      <Card padding="lg" radius="md" withBorder style={{ maxWidth: 1200, height: 480, overflow: 'hidden' }}>
+      <Card padding="lg" radius="md" withBorder style={{ maxWidth: 1200, height: 540, overflow: 'hidden' }}>
         <div style={{ display: 'flex', height: '100%', minHeight: 0 }}>
           {/* Left Column: Controls */}
           <Stack gap="md" style={{ flex: 1, minWidth: 0, paddingRight: 24 }}>
@@ -264,10 +257,19 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
 
               <div>
                 <Text size="xs" c="var(--color-foreground-muted)">
-                  Next scheduled
+                  Next schedule
                 </Text>
                 <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
-                  —
+                  {stats.nextRun ?? '—'}
+                </Text>
+              </div>
+
+              <div>
+                <Text size="xs" c="var(--color-foreground-muted)">
+                  Last rows processed
+                </Text>
+                <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
+                  {stats.lastRows?.toLocaleString() ?? '—'}
                 </Text>
               </div>
 
@@ -279,66 +281,66 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                   {fmtDuration(stats.lastDuration)}
                 </Text>
               </div>
-
-              <div>
-                <Text size="xs" c="var(--color-foreground-muted)">
-                  Last processed rows
-                </Text>
-                <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
-                  {stats.lastRows?.toLocaleString() ?? '—'}
-                </Text>
-              </div>
             </SimpleGrid>
 
             <Divider />
 
             <div>
-              <Text fw={600} size="sm" mb={8} style={{ color: 'var(--color-foreground)' }}>
-                Cron schedule
-              </Text>
-              <Group gap="xs" wrap="nowrap">
-                <TextInput
-                  value={stats.cronSchedule}
-                  readOnly
-                  style={{ flex: 1 }}
-                  size="sm"
-                  styles={{
-                    input: {
-                      color: 'var(--color-foreground)',
-                      borderColor: 'var(--color-foreground-muted)',
-                    },
-                  }}
-                />
-                <ActionIcon variant="light" size="lg" disabled style={{ color: 'var(--color-accent)' }}>
-                  <IconEdit size={18} />
-                </ActionIcon>
-                <Button
-                  variant={currentCronStatus === 'running' ? 'filled' : 'outline'}
-                  size="sm"
-                  loading={cronLoading}
-                  onClick={toggleCron}
-                  leftSection={
-                    currentCronStatus === 'running' ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />
-                  }
-                  style={{
-                    width: '140px',
-                    backgroundColor: currentCronStatus === 'running' ? 'var(--color-accent)' : 'transparent',
-                    borderColor: 'var(--color-accent)',
-                    color: currentCronStatus === 'running' ? 'white' : 'var(--color-accent)',
-                  }}
-                >
-                  {currentCronStatus === 'running' ? 'Pause cron' : 'Resume cron'}
-                </Button>
+              <Group justify="space-between" align="flex-start" mb="sm">
+                <Group gap="xs">
+                  <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
+                    Cron status
+                  </Text>
+                  <Badge
+                    size="xs"
+                    variant="light"
+                    style={{
+                      color: currentCronStatus === 'running' ? 'var(--color-accent)' : 'var(--color-foreground-muted)',
+                    }}
+                  >
+                    {currentCronStatus}
+                  </Badge>
+                </Group>
+                
+                <Group gap={8}>
+                  <Text size="xs" c="var(--color-foreground-muted)">
+                    {stats.cronSchedule}
+                  </Text>
+                  <ActionIcon
+                    size="xs"
+                    variant="subtle"
+                    style={{ color: 'var(--color-foreground-muted)' }}
+                    onClick={() => console.log('Edit schedule for', mode)}
+                  >
+                    <IconEdit size={14} />
+                  </ActionIcon>
+                </Group>
               </Group>
+              <Button
+                variant="outline"
+                size="sm"
+                fullWidth
+                loading={cronLoading}
+                leftSection={
+                  currentCronStatus === 'running' ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />
+                }
+                onClick={toggleCron}
+                style={{
+                  borderColor: 'var(--color-accent)',
+                  color: 'var(--color-accent)',
+                }}
+              >
+                {currentCronStatus === 'running' ? 'Pause cron' : 'Resume cron'}
+              </Button>
             </div>
 
             <Divider />
 
             <div>
-              <Text fw={600} size="sm" mb={8} style={{ color: 'var(--color-foreground)' }}>
-                Manual run (UTC)
+              <Text fw={600} size="sm" mb="sm" style={{ color: 'var(--color-foreground)' }}>
+                Manual run
               </Text>
-              <Group gap="xs" wrap="nowrap" align="flex-end">
+              <Group gap="sm" mb="sm" align="flex-start">
                 <DateTimePicker
                   label="From"
                   placeholder="Pick date & time"
@@ -359,22 +361,23 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                   style={{ flex: 1 }}
                   styles={{ label: { color: 'var(--color-foreground-muted)' } }}
                 />
-                <Button
-                  leftSection={<IconPlayerTrackNext size={16} />}
-                  loading={loading}
-                  disabled={!canRunManual}
-                  onClick={runManual}
-                  size="sm"
-                  style={{
-                    width: 184,
-                    ...(canRunManual
-                      ? { backgroundColor: 'var(--color-accent)', color: 'white' }
-                      : {}),
-                  }}
-                >
-                  Run manual
-                </Button>
               </Group>
+              <Button
+                variant="filled"
+                size="sm"
+                fullWidth
+                disabled={!canRunManual}
+                loading={loading}
+                leftSection={<IconPlayerTrackNext size={16} />}
+                onClick={runManual}
+                style={{
+                  ...(canRunManual
+                    ? { backgroundColor: 'var(--color-accent)', color: 'white' }
+                    : {}),
+                }}
+              >
+                Run manual
+              </Button>
             </div>
           </Stack>
 
@@ -442,7 +445,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
           </Stack>
         </div>
       </Card>
-      
+
       <RunDetailsDrawer
         opened={detailsOpened}
         onClose={() => setDetailsOpened(false)}
