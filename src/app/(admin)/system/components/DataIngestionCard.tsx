@@ -7,6 +7,7 @@ import {
   Card,
   Divider,
   Group,
+  Loader,
   ScrollArea,
   SegmentedControl,
   SimpleGrid,
@@ -23,72 +24,66 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
   IconPlayerTrackNext,
+  IconRefresh,
 } from '@tabler/icons-react';
-import { useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 
-// Импорты типов из правильных мест
-import type { IngestionMode, ModeStats, RecentActivityItem } from '../types';
+import type { IngestionMode } from '../types';
 import { RunDetailsDrawer } from './RunDetailsDrawer';
 
-// Локальный тип Props для компонента
+// ===========================================
+// Типы
+// ===========================================
+
 type Props = {
   onDetailsClick: () => void;
 };
 
-// Mock данные
-const MOCK_STATS: Record<IngestionMode, ModeStats> = {
-  raw: {
-    lastRun: '2026-01-20 14:00:00',
-    lastTrigger: 'cron',
-    lastDuration: 134000,
-    lastRows: 128342,
-    lastError: null,
-    status: 'success',
-    cronStatus: 'running',
-    cronSchedule: '0 */1 * * *',
-    nextRun: '2026-01-20 15:00:00',
-  },
-  corrections: {
-    lastRun: '2026-01-20 13:00:00',
-    lastTrigger: 'manual',
-    lastDuration: 89000,
-    lastRows: 45123,
-    lastError: null,
-    status: 'success',
-    cronStatus: 'paused',
-    cronSchedule: '0 */2 * * *',
-    nextRun: null,
-  },
-  defects: {
-    lastRun: null,
-    lastTrigger: null,
-    lastDuration: null,
-    lastRows: null,
-    lastError: null,
-    status: 'idle',
-    cronStatus: 'paused',
-    cronSchedule: '0 */3 * * *',
-    nextRun: null,
-  },
+type ModeStats = {
+  pipeline: 'ingest';
+  mode: IngestionMode;
+  last_run: string | null;
+  last_trigger: 'cron' | 'manual' | null;
+  last_status: 'running' | 'success' | 'error' | null;
+  last_duration_ms: number | null;
+  last_rows: number | null;
+  last_error: string | null;
+  cron_enabled: boolean;
+  cron_schedule: string;
+  is_running: boolean;
+  running_since: string | null;
 };
 
-const MOCK_RECENT: RecentActivityItem[] = [
-  { id: '1', time: '2026-01-20 14:00:00', mode: 'raw', trigger: 'cron' },
-  { id: '2', time: '2026-01-20 13:00:00', mode: 'corrections', trigger: 'manual' },
-  { id: '3', time: '2026-01-20 12:00:00', mode: 'raw', trigger: 'cron' },
-  { id: '4', time: '2026-01-20 11:00:00', mode: 'raw', trigger: 'cron' },
-  { id: '5', time: '2026-01-20 10:00:00', mode: 'corrections', trigger: 'cron' },
-  { id: '6', time: '2026-01-20 09:00:00', mode: 'raw', trigger: 'cron' },
-];
+type RecentRun = {
+  id: string;
+  started_at: string;
+  mode: string;
+  trigger: 'cron' | 'manual';
+  status: 'running' | 'success' | 'error';
+};
 
-function statusBadge(status: ModeStats['status']) {
-  switch (status) {
-    case 'running':
-      return (
-        <Badge variant="light" style={{ color: 'var(--color-accent)', background: 'rgba(217, 29, 84, 0.10)' }}>
-          Running
-        </Badge>
-      );
+// ===========================================
+// Хелперы
+// ===========================================
+
+function statusBadge(stats: ModeStats | null) {
+  if (!stats) {
+    return (
+      <Badge variant="light" style={{ color: 'var(--color-foreground-muted)' }}>
+        Loading
+      </Badge>
+    );
+  }
+
+  if (stats.is_running) {
+    return (
+      <Badge variant="light" style={{ color: 'var(--color-accent)', background: 'rgba(217, 29, 84, 0.10)' }}>
+        Running
+      </Badge>
+    );
+  }
+
+  switch (stats.last_status) {
     case 'error':
       return (
         <Badge variant="light" color="red">
@@ -101,7 +96,6 @@ function statusBadge(status: ModeStats['status']) {
           Success
         </Badge>
       );
-    case 'idle':
     default:
       return (
         <Badge variant="light" style={{ color: 'var(--color-foreground-muted)' }}>
@@ -120,51 +114,182 @@ function fmtDuration(ms: number | null) {
   return `${m}m ${r}s`;
 }
 
+function fmtTime(iso: string | null) {
+  if (!iso) return '—';
+  return iso.replace('T', ' ').replace('Z', '').slice(0, 19);
+}
+
+// ===========================================
+// Компонент
+// ===========================================
+
 export function DataIngestionCard({ onDetailsClick }: Props) {
   const [mode, setMode] = useState<IngestionMode>('raw');
   const [manualFrom, setManualFrom] = useState<string | null>(null);
   const [manualTo, setManualTo] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+
+  // API state
+  const [statsMap, setStatsMap] = useState<Record<IngestionMode, ModeStats | null>>({
+    raw: null,
+    corrections: null,
+    defects: null,
+  });
+  const [recentRuns, setRecentRuns] = useState<RecentRun[]>([]);
+  const [statsLoading, setStatsLoading] = useState(true);
+  const [recentLoading, setRecentLoading] = useState(true);
+
+  // Action loading states
+  const [runLoading, setRunLoading] = useState(false);
   const [cronLoading, setCronLoading] = useState(false);
+
+  // Drawer
   const [detailsOpened, setDetailsOpened] = useState(false);
 
-  // Track cron status per mode (mutable state for UI demo)
-  const [cronStatuses, setCronStatuses] = useState<Record<IngestionMode, 'running' | 'paused'>>({
-    raw: MOCK_STATS.raw.cronStatus,
-    corrections: MOCK_STATS.corrections.cronStatus,
-    defects: MOCK_STATS.defects.cronStatus,
-  });
+  // ===========================================
+  // Fetch functions
+  // ===========================================
 
-  const stats = MOCK_STATS[mode];
-  const currentCronStatus = cronStatuses[mode];
+  const fetchStats = useCallback(async () => {
+    try {
+      const res = await fetch('/api/pipelines/stats?pipeline=ingest', { cache: 'no-store' });
+      const json = await res.json();
+
+      if (json.ok && Array.isArray(json.data)) {
+        const map: Record<IngestionMode, ModeStats | null> = {
+          raw: null,
+          corrections: null,
+          defects: null,
+        };
+        for (const item of json.data) {
+          if (item.mode === 'raw' || item.mode === 'corrections' || item.mode === 'defects') {
+            map[item.mode as IngestionMode] = item;
+          }
+        }
+        setStatsMap(map);
+      }
+    } catch (err) {
+      console.error('Failed to fetch stats:', err);
+    } finally {
+      setStatsLoading(false);
+    }
+  }, []);
+
+  const fetchRecentRuns = useCallback(async () => {
+    try {
+      const res = await fetch('/api/pipelines/runs?pipeline=ingest&limit=10', { cache: 'no-store' });
+      const json = await res.json();
+
+      if (json.ok && Array.isArray(json.data)) {
+        setRecentRuns(json.data);
+      }
+    } catch (err) {
+      console.error('Failed to fetch recent runs:', err);
+    } finally {
+      setRecentLoading(false);
+    }
+  }, []);
+
+  const refreshAll = useCallback(() => {
+    setStatsLoading(true);
+    setRecentLoading(true);
+    fetchStats();
+    fetchRecentRuns();
+  }, [fetchStats, fetchRecentRuns]);
+
+  // Initial load
+  useEffect(() => {
+    fetchStats();
+    fetchRecentRuns();
+  }, [fetchStats, fetchRecentRuns]);
+
+  // ===========================================
+  // Actions
+  // ===========================================
 
   async function runManual() {
     if (!manualFrom || !manualTo) return;
-    setLoading(true);
+
+    setRunLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 1500));
-      console.log('Running manual:', { mode, manualFrom, manualTo });
+      // manualFrom/manualTo это строки вида "2026-01-01T00:00:00"
+      // Добавляем Z чтобы сервер воспринял как UTC
+      const rangeFrom = manualFrom.endsWith('Z') ? manualFrom : `${manualFrom}Z`;
+      const rangeTo = manualTo.endsWith('Z') ? manualTo : `${manualTo}Z`;
+
+      const res = await fetch('/api/pipelines/runs', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipeline: 'ingest',
+          mode,
+          trigger: 'manual',
+          range_from: rangeFrom,
+          range_to: rangeTo,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!json.ok) {
+        console.error('Run failed:', json.error);
+      }
+
+      // Refresh data
+      refreshAll();
+    } catch (err) {
+      console.error('Run error:', err);
     } finally {
-      setLoading(false);
+      setRunLoading(false);
     }
   }
 
   async function toggleCron() {
+    const currentStats = statsMap[mode];
+    if (!currentStats) return;
+
     setCronLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      // Toggle the cron status for current mode
-      setCronStatuses((prev) => ({
-        ...prev,
-        [mode]: prev[mode] === 'running' ? 'paused' : 'running',
-      }));
-      console.log('Toggle cron:', { mode, newStatus: currentCronStatus === 'running' ? 'paused' : 'running' });
+      const res = await fetch('/api/pipelines/config', {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pipeline: 'ingest',
+          mode,
+          cron_enabled: !currentStats.cron_enabled,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (json.ok) {
+        setStatsMap((prev) => ({
+          ...prev,
+          [mode]: {
+            ...prev[mode]!,
+            cron_enabled: !currentStats.cron_enabled,
+          },
+        }));
+      } else {
+        console.error('Toggle failed:', json.error);
+      }
+    } catch (err) {
+      console.error('Toggle error:', err);
     } finally {
       setCronLoading(false);
     }
   }
 
-  const canRunManual = Boolean(manualFrom && manualTo);
+  // ===========================================
+  // Derived state
+  // ===========================================
+
+  const stats = statsMap[mode];
+  const cronEnabled = stats?.cron_enabled ?? false;
+  const canRunManual = Boolean(manualFrom && manualTo) && !runLoading && !stats?.is_running;
+
+  // ===========================================
+  // Render
+  // ===========================================
 
   return (
     <>
@@ -177,7 +302,8 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 <Title order={4} style={{ color: 'var(--color-foreground)' }}>
                   Data Ingestion
                 </Title>
-                {statusBadge(stats.status)}
+                {statusBadge(stats)}
+                {statsLoading && <Loader size="xs" />}
               </Group>
               <Text c="var(--color-foreground-muted)" size="sm" mt={6}>
                 Забирает сырые данные и пишет их в raw-таблицы.
@@ -192,7 +318,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 {
                   label: (
                     <Group gap={6} wrap="nowrap">
-                      {cronStatuses.raw === 'running' ? (
+                      {statsMap.raw?.cron_enabled ? (
                         <IconCircleCheckFilled size={16} style={{ color: 'var(--color-accent)' }} />
                       ) : (
                         <IconCircle size={16} style={{ color: 'var(--color-foreground-muted)' }} />
@@ -205,7 +331,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 {
                   label: (
                     <Group gap={6} wrap="nowrap">
-                      {cronStatuses.corrections === 'running' ? (
+                      {statsMap.corrections?.cron_enabled ? (
                         <IconCircleCheckFilled size={16} style={{ color: 'var(--color-accent)' }} />
                       ) : (
                         <IconCircle size={16} style={{ color: 'var(--color-foreground-muted)' }} />
@@ -218,7 +344,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 {
                   label: (
                     <Group gap={6} wrap="nowrap">
-                      {cronStatuses.defects === 'running' ? (
+                      {statsMap.defects?.cron_enabled ? (
                         <IconCircleCheckFilled size={16} style={{ color: 'var(--color-accent)' }} />
                       ) : (
                         <IconCircle size={16} style={{ color: 'var(--color-foreground-muted)' }} />
@@ -232,9 +358,9 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
               fullWidth
             />
 
-            {stats.lastError ? (
+            {stats?.last_error ? (
               <Text size="xs" c="red">
-                {stats.lastError}
+                {stats.last_error}
               </Text>
             ) : null}
 
@@ -245,11 +371,11 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 </Text>
                 <Group gap={8}>
                   <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
-                    {stats.lastRun ?? '—'}
+                    {fmtTime(stats?.last_run ?? null)}
                   </Text>
-                  {stats.lastTrigger ? (
+                  {stats?.last_trigger ? (
                     <Badge size="xs" variant="light" style={{ color: 'var(--color-foreground-muted)' }}>
-                      {stats.lastTrigger}
+                      {stats.last_trigger}
                     </Badge>
                   ) : null}
                 </Group>
@@ -260,7 +386,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                   Next schedule
                 </Text>
                 <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
-                  {stats.nextRun ?? '—'}
+                  {cronEnabled ? stats?.cron_schedule ?? '—' : '—'}
                 </Text>
               </div>
 
@@ -269,7 +395,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                   Last rows processed
                 </Text>
                 <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
-                  {stats.lastRows?.toLocaleString() ?? '—'}
+                  {stats?.last_rows?.toLocaleString() ?? '—'}
                 </Text>
               </div>
 
@@ -278,7 +404,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                   Last duration
                 </Text>
                 <Text fw={600} size="sm" style={{ color: 'var(--color-foreground)' }}>
-                  {fmtDuration(stats.lastDuration)}
+                  {fmtDuration(stats?.last_duration_ms ?? null)}
                 </Text>
               </div>
             </SimpleGrid>
@@ -295,16 +421,16 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                     size="xs"
                     variant="light"
                     style={{
-                      color: currentCronStatus === 'running' ? 'var(--color-accent)' : 'var(--color-foreground-muted)',
+                      color: cronEnabled ? 'var(--color-accent)' : 'var(--color-foreground-muted)',
                     }}
                   >
-                    {currentCronStatus}
+                    {cronEnabled ? 'running' : 'paused'}
                   </Badge>
                 </Group>
-                
+
                 <Group gap={8}>
                   <Text size="xs" c="var(--color-foreground-muted)">
-                    {stats.cronSchedule}
+                    {stats?.cron_schedule ?? '—'}
                   </Text>
                   <ActionIcon
                     size="xs"
@@ -321,16 +447,14 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 size="sm"
                 fullWidth
                 loading={cronLoading}
-                leftSection={
-                  currentCronStatus === 'running' ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />
-                }
+                leftSection={cronEnabled ? <IconPlayerPause size={16} /> : <IconPlayerPlay size={16} />}
                 onClick={toggleCron}
                 style={{
                   borderColor: 'var(--color-accent)',
                   color: 'var(--color-accent)',
                 }}
               >
-                {currentCronStatus === 'running' ? 'Pause cron' : 'Resume cron'}
+                {cronEnabled ? 'Pause cron' : 'Resume cron'}
               </Button>
             </div>
 
@@ -367,7 +491,7 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 size="sm"
                 fullWidth
                 disabled={!canRunManual}
-                loading={loading}
+                loading={runLoading}
                 leftSection={<IconPlayerTrackNext size={16} />}
                 onClick={runManual}
                 style={{
@@ -395,9 +519,14 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
               overflow: 'hidden',
             }}
           >
-            <Title order={4} style={{ color: 'var(--color-foreground)' }}>
-              Recent activity
-            </Title>
+            <Group justify="space-between" align="center">
+              <Title order={4} style={{ color: 'var(--color-foreground)' }}>
+                Recent activity
+              </Title>
+              <ActionIcon variant="subtle" size="sm" onClick={refreshAll} loading={recentLoading}>
+                <IconRefresh size={16} />
+              </ActionIcon>
+            </Group>
 
             <ScrollArea offsetScrollbars scrollbarSize={4} style={{ flex: 1, minHeight: 0 }}>
               <Table striped highlightOnHover withTableBorder withColumnBorders stickyHeader style={{ fontSize: '12px' }}>
@@ -410,25 +539,35 @@ export function DataIngestionCard({ onDetailsClick }: Props) {
                 </Table.Thead>
 
                 <Table.Tbody>
-                  {MOCK_RECENT.map((item) => (
-                    <Table.Tr key={item.id}>
-                      <Table.Td>
-                        <Text size="xs">{item.time}</Text>
-                      </Table.Td>
-
-                      <Table.Td>
-                        <Badge size="xs" variant="light" style={{ color: 'var(--color-accent)' }}>
-                          {item.mode}
-                        </Badge>
-                      </Table.Td>
-
-                      <Table.Td>
-                        <Badge size="xs" variant="light" style={{ color: 'var(--color-foreground-muted)' }}>
-                          {item.trigger}
-                        </Badge>
+                  {recentRuns.length === 0 && !recentLoading ? (
+                    <Table.Tr>
+                      <Table.Td colSpan={3}>
+                        <Text size="xs" c="dimmed" ta="center">
+                          No runs yet
+                        </Text>
                       </Table.Td>
                     </Table.Tr>
-                  ))}
+                  ) : (
+                    recentRuns.map((item) => (
+                      <Table.Tr key={item.id}>
+                        <Table.Td>
+                          <Text size="xs">{fmtTime(item.started_at)}</Text>
+                        </Table.Td>
+
+                        <Table.Td>
+                          <Badge size="xs" variant="light" style={{ color: 'var(--color-accent)' }}>
+                            {item.mode}
+                          </Badge>
+                        </Table.Td>
+
+                        <Table.Td>
+                          <Badge size="xs" variant="light" style={{ color: 'var(--color-foreground-muted)' }}>
+                            {item.trigger}
+                          </Badge>
+                        </Table.Td>
+                      </Table.Tr>
+                    ))
+                  )}
                 </Table.Tbody>
               </Table>
             </ScrollArea>

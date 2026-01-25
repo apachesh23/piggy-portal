@@ -1,11 +1,13 @@
 'use client';
 
-import { Badge, Drawer, Group, Loader, ScrollArea, Table, Text, Title } from '@mantine/core';
-import { useEffect, useMemo, useState } from 'react';
+import { Badge, Drawer, Group, Loader, ScrollArea, Table, Text, Title, ActionIcon } from '@mantine/core';
+import { IconRefresh } from '@tabler/icons-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 
 type RunRow = {
   id: string;
   pipeline: 'ingest' | 'recalc';
+  mode: string;
   trigger: 'cron' | 'manual';
   status: 'running' | 'success' | 'error';
   started_at: string;
@@ -13,21 +15,16 @@ type RunRow = {
   duration_ms: number | null;
   rows_processed: number | null;
   error_message: string | null;
-  meta: any;
   range_from: string | null;
   range_to: string | null;
-  mode?: string | null;
+  meta: Record<string, unknown>;
 };
 
 type Props = {
   opened: boolean;
   onClose: () => void;
-
-  /** e.g. "Data Ingestion Details" / "Recalc / Aggregate Details" */
   title: string;
-
-  /** Optional: filter runs by pipeline */
-  pipeline?: RunRow['pipeline'];
+  pipeline?: 'ingest' | 'recalc';
 };
 
 function resultBadge(status: RunRow['status']) {
@@ -72,25 +69,37 @@ export function RunDetailsDrawer({ opened, onClose, title, pipeline }: Props) {
   const [rows, setRows] = useState<RunRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  async function load() {
+  const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetch('/api/system/runs?limit=200', { cache: 'no-store' });
+      // Используем новый API endpoint
+      const params = new URLSearchParams({ limit: '200' });
+      if (pipeline) {
+        params.set('pipeline', pipeline);
+      }
+
+      const res = await fetch(`/api/pipelines/runs?${params}`, { cache: 'no-store' });
       const json = await res.json();
-      if (res.ok) setRows(json.data ?? []);
-      else console.error(json);
+
+      if (json.ok) {
+        setRows(json.data ?? []);
+      } else {
+        console.error('Failed to load runs:', json.error);
+      }
+    } catch (err) {
+      console.error('Error loading runs:', err);
     } finally {
       setLoading(false);
     }
-  }
+  }, [pipeline]);
 
   useEffect(() => {
     if (!opened) return;
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [opened]);
+  }, [opened, load]);
 
   const filteredRows = useMemo(() => {
+    // Фильтрация уже происходит на сервере, но оставим на всякий случай
     if (!pipeline) return rows;
     return rows.filter((r) => r.pipeline === pipeline);
   }, [rows, pipeline]);
@@ -101,10 +110,15 @@ export function RunDetailsDrawer({ opened, onClose, title, pipeline }: Props) {
         <div>
           <Title order={4}>Activity</Title>
           <Text c="dimmed" size="sm" mt={4}>
-            Полная история запусков cron/manual из system_runs.
+            Полная история запусков cron/manual из pipeline_runs.
           </Text>
         </div>
-        {loading ? <Loader size="sm" /> : null}
+        <Group gap="xs">
+          {loading && <Loader size="sm" />}
+          <ActionIcon variant="subtle" onClick={load} loading={loading}>
+            <IconRefresh size={16} />
+          </ActionIcon>
+        </Group>
       </Group>
 
       <ScrollArea h="calc(100vh - 180px)">
@@ -173,21 +187,21 @@ export function RunDetailsDrawer({ opened, onClose, title, pipeline }: Props) {
 
                 <Table.Td>
                   <Text size="xs" c="dimmed">
-                    {r.id}
+                    {r.id.slice(0, 8)}...
                   </Text>
                 </Table.Td>
               </Table.Tr>
             ))}
 
-            {!loading && filteredRows.length === 0 ? (
+            {!loading && filteredRows.length === 0 && (
               <Table.Tr>
                 <Table.Td colSpan={10}>
-                  <Text size="sm" c="dimmed" ta="center" py="md">
-                    No runs yet
+                  <Text size="sm" c="dimmed" ta="center" py="xl">
+                    No runs found
                   </Text>
                 </Table.Td>
               </Table.Tr>
-            ) : null}
+            )}
           </Table.Tbody>
         </Table>
       </ScrollArea>
