@@ -127,102 +127,120 @@ task_products AS (
   FROM filtered_audit
   WHERE productid IS NOT NULL
   GROUP BY taskid
+),
+
+-- Собираем сырые данные
+raw_data AS (
+  SELECT 
+    ti.taskid AS task_id,
+    ti.username AS user_name,
+    ti.tasktype AS task_type,
+    tl.start_time,
+    COALESCE(tl.finish_time, tt.timeout_date) AS finish_time,
+    tl.close_status AS close_status,
+    
+    -- Время выполнения (сырое, до проверки items[3])
+    COALESCE(tl.finish_time, tt.timeout_date) - tl.start_time AS raw_duration,
+    
+    -- Полный расчет items в виде массива с учетом специфики разных типов задач
+    CASE
+      WHEN ti.tasktype = 'ProductUpdate' THEN
+        ARRAY[
+          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
+          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
+          COALESCE(NULLIF(ua.count_18, 0), ua.count_83, 0)
+        ]
+      WHEN ti.tasktype = 'UpdatePictureFilter' THEN
+        ARRAY[
+          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
+          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
+          COALESCE(ua.count_10, 0)
+        ]
+      WHEN ti.tasktype = 'ImageUpdate' THEN
+        ARRAY[
+          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
+          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
+          COALESCE(ua.count_image_update, 0)
+        ]
+      ELSE
+        ARRAY[
+          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
+          CASE 
+            WHEN ti.tasktype IN ('ImageBackgroundRemoval', 'ImageChoice') THEN
+              COALESCE((tl.json_value_39::json->>'NumberOfImageAssigned')::int, (tl.json_value_55::json->>'NumberOfImageAssigned')::int, 0)
+            ELSE
+              COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0)
+          END,
+          CASE 
+            WHEN ti.tasktype IN ('ImageBackgroundRemoval', 'ImageChoice') THEN
+              COALESCE((tl.json_value_39::json->>'NumberOfImageFinished')::int, (tl.json_value_55::json->>'NumberOfImageFinished')::int, 0)
+            ELSE
+              COALESCE((tl.json_value_39::json->>'NumberOfProductFinished')::int, (tl.json_value_55::json->>'NumberOfProductFinished')::int, 0)
+          END
+        ]
+    END AS items,
+    
+    -- Список product_id участвующих в задаче в виде массива
+    tp.product_ids AS product_ids,
+    
+    -- Незавершенные продукты
+    CASE 
+      WHEN tl.json_value_39 IS NOT NULL THEN
+        ARRAY(
+          SELECT unnest(
+            ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_39::json->>'ListOfAssignedProductIds')::text, '[]')::jsonb))::integer)
+          )
+          EXCEPT
+          SELECT unnest(
+            ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_39::json->>'ListOfFinishedProductIds')::text, '[]')::jsonb))::integer)
+          )
+        )
+      WHEN tl.json_value_55 IS NOT NULL THEN
+        ARRAY(
+          SELECT unnest(
+            ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_55::json->>'ListOfAssignedProductIds')::text, '[]')::jsonb))::integer)
+          )
+          EXCEPT
+          SELECT unnest(
+            ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_55::json->>'ListOfFinishedProductIds')::text, '[]')::jsonb))::integer)
+          )
+        )
+      ELSE
+        ARRAY[]::integer[]
+    END AS not_finished_product_ids
+    
+  FROM 
+    task_info ti
+    INNER JOIN task_timeline tl ON ti.taskid = tl.taskid
+    LEFT JOIN task_timeout tt ON ti.taskid = tt.taskid
+    LEFT JOIN user_actions ua ON ti.taskid = ua.taskid
+    LEFT JOIN task_products tp ON ti.taskid = tp.taskid
+  WHERE 
+    tl.start_time IS NOT NULL AND
+    ((tl.start_time >= (SELECT start_date FROM dates) AND tl.start_time <= (SELECT end_date FROM dates)) OR
+     (COALESCE(tl.finish_time, tt.timeout_date) >= (SELECT start_date FROM dates) AND COALESCE(tl.finish_time, tt.timeout_date) <= (SELECT end_date FROM dates)))
 )
 
-SELECT 
-  ti.taskid AS task_id,
-  ti.username AS user_name,
-  ti.tasktype AS task_type,
-  tl.start_time,
-  COALESCE(tl.finish_time, tt.timeout_date) AS finish_time,
-  tl.close_status AS close_status,
-  
-  -- Время выполнения задачи в формате MM:SS
-  TO_CHAR(
-    COALESCE(tl.finish_time, tt.timeout_date) - tl.start_time,
-    'MI:SS'
-  ) AS time_spent,
-  
-  -- Время выполнения задачи в секундах
-  EXTRACT(EPOCH FROM (COALESCE(tl.finish_time, tt.timeout_date) - tl.start_time))::integer AS time_spent_sec,
-  
-  -- Полный расчет items в виде массива с учетом специфики разных типов задач
-  CASE
-    WHEN ti.tasktype = 'ProductUpdate' THEN
-      ARRAY[
-        COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
-        COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
-        COALESCE(NULLIF(ua.count_18, 0), ua.count_83, 0)
-      ]
-    WHEN ti.tasktype = 'UpdatePictureFilter' THEN
-      ARRAY[
-        COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
-        COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
-        COALESCE(ua.count_10, 0)
-      ]
-    WHEN ti.tasktype = 'ImageUpdate' THEN
-      ARRAY[
-        COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
-        COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
-        COALESCE(ua.count_image_update, 0)
-      ]
-    ELSE
-      ARRAY[
-        COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
-        CASE 
-          WHEN ti.tasktype IN ('ImageBackgroundRemoval', 'ImageChoice') THEN
-            COALESCE((tl.json_value_39::json->>'NumberOfImageAssigned')::int, (tl.json_value_55::json->>'NumberOfImageAssigned')::int, 0)
-          ELSE
-            COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0)
-        END,
-        CASE 
-          WHEN ti.tasktype IN ('ImageBackgroundRemoval', 'ImageChoice') THEN
-            COALESCE((tl.json_value_39::json->>'NumberOfImageFinished')::int, (tl.json_value_55::json->>'NumberOfImageFinished')::int, 0)
-          ELSE
-            COALESCE((tl.json_value_39::json->>'NumberOfProductFinished')::int, (tl.json_value_55::json->>'NumberOfProductFinished')::int, 0)
-        END
-      ]
-  END AS items,
-  
-  -- Список product_id участвующих в задаче в виде массива
-  tp.product_ids AS product_ids,
-  
-  -- Незавершенные продукты
+-- Финальный SELECT с логикой: если items[3] = 0, то time_spent = 0
+SELECT
+  task_id,
+  user_name,
+  task_type,
+  start_time,
+  finish_time,
+  close_status,
+  -- Если сдал 0 продуктов — время = 0
   CASE 
-    WHEN tl.json_value_39 IS NOT NULL THEN
-      ARRAY(
-        SELECT unnest(
-          ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_39::json->>'ListOfAssignedProductIds')::text, '[]')::jsonb))::integer)
-        )
-        EXCEPT
-        SELECT unnest(
-          ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_39::json->>'ListOfFinishedProductIds')::text, '[]')::jsonb))::integer)
-        )
-      )
-    WHEN tl.json_value_55 IS NOT NULL THEN
-      ARRAY(
-        SELECT unnest(
-          ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_55::json->>'ListOfAssignedProductIds')::text, '[]')::jsonb))::integer)
-        )
-        EXCEPT
-        SELECT unnest(
-          ARRAY(SELECT (jsonb_array_elements_text(COALESCE((tl.json_value_55::json->>'ListOfFinishedProductIds')::text, '[]')::jsonb))::integer)
-        )
-      )
-    ELSE
-      ARRAY[]::integer[]
-  END AS not_finished_product_ids
-  
-FROM 
-  task_info ti
-  INNER JOIN task_timeline tl ON ti.taskid = tl.taskid
-  LEFT JOIN task_timeout tt ON ti.taskid = tt.taskid
-  LEFT JOIN user_actions ua ON ti.taskid = ua.taskid
-  LEFT JOIN task_products tp ON ti.taskid = tp.taskid
-WHERE 
-  tl.start_time IS NOT NULL AND
-  ((tl.start_time >= (SELECT start_date FROM dates) AND tl.start_time <= (SELECT end_date FROM dates)) OR
-   (COALESCE(tl.finish_time, tt.timeout_date) >= (SELECT start_date FROM dates) AND COALESCE(tl.finish_time, tt.timeout_date) <= (SELECT end_date FROM dates)))
-ORDER BY 
-  tl.start_time;
+    WHEN items[3] = 0 THEN '00:00'
+    ELSE TO_CHAR(raw_duration, 'MI:SS')
+  END AS time_spent,
+  CASE 
+    WHEN items[3] = 0 THEN 0
+    ELSE EXTRACT(EPOCH FROM raw_duration)::integer
+  END AS time_spent_sec,
+  items,
+  product_ids,
+  not_finished_product_ids
+FROM raw_data
+ORDER BY start_time;
 `;

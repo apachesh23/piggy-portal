@@ -105,7 +105,9 @@ export async function ingestRaw(params: IngestRawParams): Promise<IngestRawResul
       end: endFormatted,
     });
 
-    // Параллельные запросы к Redash
+    // Возвращаем параллельное выполнение
+    console.log('[IngestRaw] Fetching auditlog + timetracker from Redash (parallel)...');
+
     const [auditlogResult, timetrackerResult] = await Promise.all([
       executeRedashQuery<AuditlogRow>(auditlogQuery),
       executeRedashQuery<TimetrackerRow>(timetrackerQuery),

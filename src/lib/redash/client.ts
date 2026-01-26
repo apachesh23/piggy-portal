@@ -109,37 +109,40 @@ export const REDASH_CONFIG = {
    */
   async function pollJobStatus(jobId: string): Promise<{ resultId?: number; error?: string }> {
     const url = `${REDASH_CONFIG.HOST}/api/jobs/${jobId}`;
-  
+    const startTime = Date.now(); // <-- добавь
+
     for (let attempt = 0; attempt < REDASH_CONFIG.TIMEOUT_ATTEMPTS; attempt++) {
       const response = await fetch(url, {
         method: 'GET',
         headers: getHeaders(),
       });
-  
+
       if (!response.ok) {
         return { error: `Failed to poll job: ${response.status}` };
       }
-  
+
       const data = await response.json();
       const job = data.job as RedashJob;
-  
-      // Status 3 = успешно завершен
+
+      // Логируем статус каждые 5 секунд
+      if (attempt % 5 === 0) {
+        console.log(`[Redash] Job ${jobId.slice(0, 8)}... status=${job.status}, attempt=${attempt}, elapsed=${((Date.now() - startTime) / 1000).toFixed(1)}s`);
+      }
+
       if (job.status === 3) {
         if (job.query_result_id) {
           return { resultId: job.query_result_id };
         }
         return { error: 'Job completed but no query_result_id' };
       }
-  
-      // Status 4 = ошибка
+
       if (job.status === 4) {
         return { error: job.error || 'Job failed with unknown error' };
       }
-  
-      // Status 1 или 2 = ещё выполняется, ждём
+
       await sleep(REDASH_CONFIG.RETRY_DELAY);
     }
-  
+
     return { error: `Job timeout after ${REDASH_CONFIG.TIMEOUT_ATTEMPTS} attempts` };
   }
   
@@ -192,6 +195,11 @@ export const REDASH_CONFIG = {
   export async function executeRedashQuery<T = Record<string, unknown>>(
     query: string
   ): Promise<RedashResponse<T>> {
+
+    // Добавь эти логи
+    console.log('[Redash] Using host:', REDASH_CONFIG.HOST);
+    console.log('[Redash] Using data source:', REDASH_CONFIG.DATA_SOURCE_ID);
+
     // Проверяем конфиг
     if (!REDASH_CONFIG.API_KEY) {
       return { ok: false, error: 'REDASH_API_KEY is not configured' };
