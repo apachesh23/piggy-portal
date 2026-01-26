@@ -49,9 +49,10 @@ user_actions AS (
     COUNT(DISTINCT CASE WHEN auditsubtype = 18 THEN productid END) AS count_18,
     COUNT(DISTINCT CASE WHEN auditsubtype = 10 THEN productid END) AS count_10,
     COUNT(DISTINCT CASE WHEN auditsubtype = 83 THEN productid END) AS count_83,
-    COUNT(DISTINCT CASE WHEN tasktype = 'ImageUpdate' THEN productid END) AS count_image_update
+    COUNT(DISTINCT CASE WHEN tasktype = 'ImageUpdate' THEN productid END) AS count_image_update,
+    COUNT(DISTINCT CASE WHEN auditsubtype = 82 AND imageid IS NOT NULL THEN productid END) AS count_82
   FROM filtered_audit
-  WHERE auditsubtype IN (18, 10, 83) OR tasktype = 'ImageUpdate'
+  WHERE auditsubtype IN (18, 10, 83, 82) OR tasktype = 'ImageUpdate'
   GROUP BY taskid
 ),
 
@@ -61,6 +62,7 @@ task_timeline AS (
     taskid,
     MAX(CASE WHEN auditsubtype = 38 THEN auditdate END) AS start_time,
     MAX(CASE WHEN auditsubtype = 39 THEN auditdate END) AS finish_time,
+    MAX(CASE WHEN auditsubtype = 38 THEN jsonvalue::text END) AS json_value_38,
     MAX(CASE WHEN auditsubtype = 39 THEN jsonvalue::text END) AS json_value_39,
     MAX(CASE WHEN auditsubtype = 55 THEN jsonvalue::text END) AS json_value_55,
     CASE 
@@ -152,15 +154,15 @@ raw_data AS (
         ]
       WHEN ti.tasktype = 'UpdatePictureFilter' THEN
         ARRAY[
-          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
-          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
-          COALESCE(ua.count_10, 0)
+          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_38::json->>'NumberOfProduct_Images_Configured')::int, 0),
+          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, (tl.json_value_38::json->>'NumberOfProductAssigned')::int, 0),
+          COALESCE(ua.count_10, 0) + COALESCE(ua.count_18, 0)
         ]
       WHEN ti.tasktype = 'ImageUpdate' THEN
         ARRAY[
-          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, 0),
-          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, 0),
-          COALESCE(ua.count_image_update, 0)
+          COALESCE((tl.json_value_39::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_55::json->>'NumberOfProduct_Images_Configured')::int, (tl.json_value_38::json->>'NumberOfProduct_Images_Configured')::int, 0),
+          COALESCE((tl.json_value_39::json->>'NumberOfProductAssigned')::int, (tl.json_value_55::json->>'NumberOfProductAssigned')::int, (tl.json_value_38::json->>'NumberOfProductAssigned')::int, 0),
+          COALESCE(ua.count_82, 0)
         ]
       ELSE
         ARRAY[
