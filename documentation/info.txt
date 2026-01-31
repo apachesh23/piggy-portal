@@ -1,5 +1,0 @@
-Discord Application ID
-1460100839367774393
-
-Client Secret
-IZ8mJXpwHFrE-37BM_5LTbrTj6k52LpG
